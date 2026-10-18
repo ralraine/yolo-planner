@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
-import { CalendarRange, Clock3, DoorOpen, Pencil, Plus, Trash2, X } from "lucide-react";
+import { CalendarRange, Clock3, Pencil, Plus, Trash2, X, ScanLine, RotateCcw } from "lucide-react";
 
 type Subject = { id: string; name: string; code: string | null; color: string };
 type Meeting = { id: string; subject_id: string; weekday: number; start_time: string; end_time: string; room: string };
@@ -9,24 +9,41 @@ type Draft = Omit<Meeting, "id"> & { id?: string };
 type LaidOutMeeting = { meeting: Meeting; lane: number; totalLanes: number };
 
 const DAYS = ["Suckday", "Moanday", "Tongueday", "Wetday", "Thirstday", "Freakday", "Sexday"];
-const PX_PER_HOUR = 76;
-const HOUR_OPTIONS = Array.from({ length: 25 }, (_, hour) => hour);
+const PX_PER_HOUR = 72;
+const DEFAULT_RANGE = { start: 7 * 60, end: 19 * 60 };
+const RANGE_OPTIONS = Array.from({ length: 49 }, (_, halfHour) => halfHour * 30);
 const blank = (subject?: Subject): Draft => ({ subject_id: subject?.id ?? "", weekday: 1, start_time: "09:00", end_time: "10:30", room: "" });
 
 function minutes(t: string) {
   const [h, m] = t.slice(0, 5).split(":").map(Number);
   return h * 60 + m;
 }
-function timeLabel(t: string) {
-  const [h, m] = t.slice(0, 5).split(":").map(Number);
+function minuteLabel(value: number) {
+  if (value === 1440) return "12:00 AM (next day)";
+  const h = Math.floor(value / 60);
+  const m = value % 60;
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
 }
+function timeLabel(t: string) { return minuteLabel(minutes(t)); }
 function hourLabel(hour: number) {
   if (hour === 24) return "12 AM";
   return `${hour % 12 || 12} ${hour >= 12 ? "PM" : "AM"}`;
 }
+function safeSubjectColor(value: string | undefined) {
+  return value && /^#[0-9a-f]{6}$/i.test(value) ? value : "#7691b8";
+}
+// Use the higher-contrast ink for both pastel and dark custom subject colors.
+function textOn(background: string) {
+  const comps = [1, 3, 5].map(pos => {
+    const channel = parseInt(background.slice(pos, pos + 2), 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  const lum = comps[0] * 0.2126 + comps[1] * 0.7152 + comps[2] * 0.0722;
+  const darkInkLum = 0.015;
+  return (lum + 0.05) / (darkInkLum + 0.05) >= 1.05 / (lum + 0.05) ? "#152039" : "#ffffff";
+}
 
-// Avoid hiding overlapping classes: allocate side-by-side lanes within each collision group.
+// Lay overlapping classes next to one another rather than hiding either one.
 function layoutMeetings(meetings: Meeting[]): LaidOutMeeting[] {
   const ordered = [...meetings].sort((a, b) => minutes(a.start_time) - minutes(b.start_time) || minutes(a.end_time) - minutes(b.end_time));
   const result: LaidOutMeeting[] = [];
@@ -62,8 +79,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export default function ClassSchedulePanel({ subjects, onAddSubject, openClassForSubjectId, onOpenClassHandled }: {
+export default function ClassSchedulePanel({ subjects, username, onAddSubject, openClassForSubjectId, onOpenClassHandled }: {
   subjects: Subject[];
+  username: string;
   onAddSubject: () => void;
   openClassForSubjectId: string | null;
   onOpenClassHandled: () => void;
@@ -73,16 +91,16 @@ export default function ClassSchedulePanel({ subjects, onAddSubject, openClassFo
   const [error, setError] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
-  const [startHour, setStartHour] = useState(7);
-  const [endHour, setEndHour] = useState(19);
+  const [range, setRange] = useState(DEFAULT_RANGE);
+  const storageKey = `yolo:${username}:class-timetable-range-v64`;
 
   const byDay = useMemo(() => DAYS.map((_, i) => meetings.filter(m => m.weekday === i)), [meetings]);
   const subjectMap = useMemo(() => new Map(subjects.map(s => [s.id, s])), [subjects]);
-  const height = (endHour - startHour) * PX_PER_HOUR;
-  const hours = HOUR_OPTIONS.filter(h => h >= startHour && h <= endHour);
-  const outsideCount = meetings.filter(m => minutes(m.start_time) < startHour * 60 || minutes(m.end_time) > endHour * 60).length;
+  const height = (range.end - range.start) / 60 * PX_PER_HOUR;
+  const outsideCount = meetings.filter(m => minutes(m.start_time) < range.start || minutes(m.end_time) > range.end).length;
+  const hourLines = Array.from({ length: Math.floor(range.end / 60) - Math.ceil(range.start / 60) + 1 }, (_, i) => Math.ceil(range.start / 60) + i);
+  const halfLines = Array.from({ length: Math.floor((range.end - range.start) / 30) + 1 }, (_, i) => range.start + i * 30).filter(t => t % 60 === 30 && t < range.end);
 
-  // Once the first subject has been saved, finish the Add Class flow automatically.
   useEffect(() => {
     if (!openClassForSubjectId) return;
     const subject = subjects.find(s => s.id === openClassForSubjectId);
@@ -100,23 +118,36 @@ export default function ClassSchedulePanel({ subjects, onAddSubject, openClassFo
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(window.localStorage.getItem("yolo:class-timetable-range") ?? "null");
-      if (Number.isInteger(stored?.start) && Number.isInteger(stored?.end) && stored.start >= 0 && stored.end <= 24 && stored.start < stored.end) {
-        setStartHour(stored.start); setEndHour(stored.end);
+      const current = window.localStorage.getItem(storageKey);
+      const parsed = JSON.parse(current ?? window.localStorage.getItem("yolo:class-timetable-range") ?? "null");
+      if (Number.isInteger(parsed?.start) && Number.isInteger(parsed?.end)) {
+        // Older versions stored hours; convert valid older local preferences if encountered.
+        const start = parsed.start <= 24 && parsed.end <= 24 ? parsed.start * 60 : parsed.start;
+        const end = parsed.start <= 24 && parsed.end <= 24 ? parsed.end * 60 : parsed.end;
+        if (start >= 0 && end <= 1440 && start < end) setRange({ start, end });
       }
-    } catch { /* range preferences are optional */ }
+    } catch { /* optional local display preference */ }
     let live = true;
     request<{ meetings: Meeting[] }>("/api/class-meetings")
       .then(r => { if (live) setMeetings(r.meetings); })
       .catch(e => { if (live) setError(e instanceof Error ? e.message : "Unable to load classes."); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, []);
+  }, [storageKey]);
 
-  function updateHours(start: number, end: number) {
-    if (start < 0 || end > 24 || start >= end) return;
-    setStartHour(start); setEndHour(end);
-    try { window.localStorage.setItem("yolo:class-timetable-range", JSON.stringify({ start, end })); } catch { /* ignore */ }
+  function updateRange(start: number, end: number) {
+    if (start < 0 || end > 1440 || start >= end) return;
+    const next = { start, end };
+    setRange(next);
+    try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* optional local preference */ }
+  }
+  function fitClasses() {
+    if (!meetings.length) return;
+    const earliest = Math.min(...meetings.map(m => minutes(m.start_time)));
+    const latest = Math.max(...meetings.map(m => minutes(m.end_time)));
+    const start = Math.max(0, Math.floor(earliest / 30) * 30 - 30);
+    const end = Math.min(1440, Math.max(start + 30, Math.ceil(latest / 30) * 30 + 30));
+    updateRange(start, end);
   }
 
   async function save(e: FormEvent) {
@@ -128,10 +159,9 @@ export default function ClassSchedulePanel({ subjects, onAddSubject, openClassFo
         method: draft.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft),
       });
       setMeetings(previous => draft.id ? previous.map(m => m.id === res.meeting.id ? res.meeting : m) : [...previous, res.meeting]);
-      // Automatically expand to include the newly saved class, even when it is outside 7 AM–7 PM.
-      const start = Math.min(startHour, Math.floor(minutes(res.meeting.start_time) / 60));
-      const end = Math.max(endHour, Math.ceil(minutes(res.meeting.end_time) / 60));
-      if (start !== startHour || end !== endHour) updateHours(start, end);
+      const first = Math.min(range.start, Math.floor(minutes(res.meeting.start_time) / 30) * 30);
+      const last = Math.max(range.end, Math.ceil(minutes(res.meeting.end_time) / 30) * 30);
+      if (first !== range.start || last !== range.end) updateRange(first, last);
       setDraft(null);
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to save class."); }
     finally { setSaving(false); }
@@ -146,51 +176,56 @@ export default function ClassSchedulePanel({ subjects, onAddSubject, openClassFo
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to delete class meeting."); }
   }
 
-  return <section className="db-v5-section">
-    <div className="db-v5-heading">
-      <div><span className="db-overline">YOUR WEEKLY TIMETABLE</span><h2>Class Schedule</h2><p>Subjects keep their colors · Class meetings stay separate from the task calendar</p></div>
+  return <section className="db-v5-section db-v64-page">
+    <div className="db-v5-heading db-v64-heading">
+      <div><span className="db-overline">YOUR WEEK AT A GLANCE</span><h2>Class Schedule</h2><p>A color-filled timetable, built around your subjects and your hours.</p></div>
       <button type="button" className="db-btn db-btn-primary" onClick={beginAddClass}><Plus size={16}/> Add class</button>
     </div>
 
-    <div className="db-v51-schedule-toolbar">
-      <div><Clock3 size={18}/><strong>Hours displayed</strong></div>
-      <label>From <select aria-label="Timetable visible start hour" value={startHour} onChange={e => { const s = Number(e.target.value); updateHours(s, Math.max(endHour, s + 1)); }}>{HOUR_OPTIONS.slice(0, 24).map(h => <option key={h} value={h} disabled={h >= 24}>{hourLabel(h)}</option>)}</select></label>
-      <label>To <select aria-label="Timetable visible end hour" value={endHour} onChange={e => updateHours(startHour, Number(e.target.value))}>{HOUR_OPTIONS.filter(h => h > startHour).map(h => <option key={h} value={h}>{hourLabel(h)}</option>)}</select></label>
-      <button type="button" onClick={() => updateHours(7, 19)}>Reset 7 AM – 7 PM</button>
+    <div className="db-v64-range-toolbar">
+      <div className="db-v64-range-title"><Clock3 size={17}/><div><strong>My timetable hours</strong><small>Choose the time window you want to see.</small></div></div>
+      <label>From <select aria-label="Start of visible class schedule" value={range.start} onChange={e => updateRange(Number(e.target.value), Math.max(range.end, Number(e.target.value) + 30))}>{RANGE_OPTIONS.slice(0, -1).filter(t => t < range.end).map(t => <option key={t} value={t}>{minuteLabel(t)}</option>)}</select></label>
+      <label>To <select aria-label="End of visible class schedule" value={range.end} onChange={e => updateRange(range.start, Number(e.target.value))}>{RANGE_OPTIONS.filter(t => t > range.start).map(t => <option key={t} value={t}>{minuteLabel(t)}</option>)}</select></label>
+      <div className="db-v64-toolbar-buttons"><button type="button" disabled={!meetings.length} onClick={fitClasses} title="Automatically display all saved class times"><ScanLine size={15}/> Fit my classes</button><button type="button" onClick={() => updateRange(DEFAULT_RANGE.start, DEFAULT_RANGE.end)} title="Reset time range to 7 AM–7 PM"><RotateCcw size={14}/> Reset</button></div>
     </div>
 
-    {!subjects.length && <p className="db-v5-message">No subjects yet. Click <strong>Add class</strong> to create your first subject, then continue to the timetable.</p>}
+    {!subjects.length && <p className="db-v5-message">No subjects yet. Click <strong>Add class</strong> to create your first subject and continue with the timetable.</p>}
     {error && <p className="db-error" role="alert">{error}</p>}
-    {outsideCount > 0 && !loading && <p className="db-v51-outside" role="status">{outsideCount} class meeting(s) extend outside the visible hours. Adjust the From / To controls to show them fully.</p>}
+    {outsideCount > 0 && !loading && <p className="db-v51-outside" role="status">{outsideCount} class meeting(s) outside your selected hours. Choose <strong>Fit my classes</strong> or adjust From / To to see them all.</p>}
 
     {loading ? <p className="db-v5-message">Loading your class schedule…</p> :
-      <div className="db-v51-scroll" aria-label="Weekly class schedule, scroll horizontally to see all days">
-        <div className="db-v51-timeline" style={{ "--yolo-hour-height": `${PX_PER_HOUR}px` } as CSSProperties}>
-          <div className="db-v51-corner">TIME</div>
-          {DAYS.map((day, i) => <div key={day} className="db-v51-day-head"><strong>{day}</strong><span>{byDay[i].length} {byDay[i].length === 1 ? "class" : "classes"}</span></div>)}
-          <div className="db-v51-hours" style={{ height }}>
-            {hours.map(h => <div key={h} className="db-v51-hour-label" style={{ top: (h - startHour) * PX_PER_HOUR }}>{hourLabel(h)}</div>)}
+      <div className="db-v64-scroll" aria-label="Weekly class timetable; scroll horizontally on smaller screens" tabIndex={0}>
+        <div className="db-v64-timetable">
+          <div className="db-v64-corner"><Clock3 size={14}/><span>TIME</span></div>
+          {DAYS.map((day, index) => <div key={day} className="db-v64-day-head"><span className="db-v64-day-index">{String(index + 1).padStart(2, "0")}</span><strong>{day}</strong><small>{byDay[index].length} {byDay[index].length === 1 ? "class" : "classes"}</small></div>)}
+
+          <div className="db-v64-hours" style={{ height }}>
+            {hourLines.map(hour => <span key={hour} className="db-v64-hour-label" style={{ top: ((hour * 60 - range.start) / 60) * PX_PER_HOUR }}>{hourLabel(hour)}</span>)}
           </div>
-          {DAYS.map((day, i) => {
-            const visible = byDay[i].filter(m => minutes(m.end_time) > startHour * 60 && minutes(m.start_time) < endHour * 60);
-            return <div key={day} className="db-v51-day-column" style={{ height }} aria-label={`${day} classes`}>
-              {Array.from({ length: endHour - startHour }, (_, hour) => <div key={hour} className="db-v51-hour-rule" style={{ top: hour * PX_PER_HOUR }} />)}
-              {visible.length === 0 && <span className="db-v51-no-class">No classes</span>}
+          {DAYS.map((day, index) => {
+            const visible = byDay[index].filter(m => minutes(m.end_time) > range.start && minutes(m.start_time) < range.end);
+            return <div key={day} className="db-v64-day-column" style={{ height }} aria-label={`${day} class timetable`}>
+              {hourLines.map(hour => <div key={hour} className="db-v64-hour-rule" style={{ top: ((hour * 60 - range.start) / 60) * PX_PER_HOUR }}/>) }
+              {halfLines.map(minute => <div key={minute} className="db-v64-half-rule" style={{ top: ((minute - range.start) / 60) * PX_PER_HOUR }}/>) }
+              {visible.length === 0 && <span className="db-v64-empty">—</span>}
               {layoutMeetings(visible).map(({ meeting, lane, totalLanes }) => {
-                const s = subjectMap.get(meeting.subject_id);
-                const clippedStart = Math.max(minutes(meeting.start_time), startHour * 60);
-                const clippedEnd = Math.min(minutes(meeting.end_time), endHour * 60);
-                const top = ((clippedStart - startHour * 60) / 60) * PX_PER_HOUR;
+                const subject = subjectMap.get(meeting.subject_id);
+                const clippedStart = Math.max(minutes(meeting.start_time), range.start);
+                const clippedEnd = Math.min(minutes(meeting.end_time), range.end);
+                const top = ((clippedStart - range.start) / 60) * PX_PER_HOUR;
                 const size = ((clippedEnd - clippedStart) / 60) * PX_PER_HOUR;
                 const width = 100 / totalLanes;
-                return <article key={meeting.id} className="db-v51-class" title={`${s?.name ?? "Deleted subject"} · ${timeLabel(meeting.start_time)} – ${timeLabel(meeting.end_time)} · ${meeting.room || "Room TBA"}`}
-                  style={{ top: top + 3, height: Math.max(28, size - 6), left: `calc(${width * lane}% + 3px)`, width: `calc(${width}% - 6px)`, borderLeftColor: s?.color ?? "#b8bdcf" }}>
-                  <time>{timeLabel(meeting.start_time)} – {timeLabel(meeting.end_time)}</time>
-                  <strong>{s?.name ?? "Deleted subject"}</strong>
-                  <small>{s?.code ? `${s.code} · ` : ""}{meeting.room || "Room TBA"}</small>
-                  <div className="db-v51-class-actions">
-                    <button type="button" aria-label={`Edit ${s?.name ?? "class"}`} title="Edit class" onClick={() => { setError(""); setDraft({ ...meeting, start_time: meeting.start_time.slice(0, 5), end_time: meeting.end_time.slice(0, 5) }); }}><Pencil size={15}/></button>
-                    <button type="button" aria-label={`Delete ${s?.name ?? "class"}`} title="Delete class" onClick={() => void remove(meeting)}><Trash2 size={15}/></button>
+                const bg = safeSubjectColor(subject?.color);
+                const compact = size < 65;
+                return <article key={meeting.id} className={`db-v64-class ${compact ? "db-v64-class-compact" : ""}`} title={`${subject?.name ?? "Deleted subject"} · ${timeLabel(meeting.start_time)} – ${timeLabel(meeting.end_time)} · ${meeting.room || "Room TBA"}`}
+                  style={{ top: top + 2, height: Math.max(22, size - 4), left: `calc(${width * lane}% + 2px)`, width: `calc(${width}% - 4px)`, "--yolo-block-bg": bg, "--yolo-block-ink": textOn(bg) } as CSSProperties}>
+                  <div className="db-v64-class-details">
+                    <strong>{subject?.name ?? "Deleted subject"}</strong>
+                    {!compact && <><span className="db-v64-class-time">{timeLabel(meeting.start_time)} – {timeLabel(meeting.end_time)}</span>{(subject?.code || meeting.room) && <small>{subject?.code ? `${subject.code}${meeting.room ? " · " : ""}` : ""}{meeting.room}</small>}</>}
+                  </div>
+                  <div className="db-v64-class-actions">
+                    <button type="button" aria-label={`Edit ${subject?.name ?? "class"}`} title="Edit class" onClick={() => { setError(""); setDraft({ ...meeting, start_time: meeting.start_time.slice(0, 5), end_time: meeting.end_time.slice(0, 5) }); }}><Pencil size={13}/></button>
+                    <button type="button" aria-label={`Delete ${subject?.name ?? "class"}`} title="Delete class" onClick={() => void remove(meeting)}><Trash2 size={13}/></button>
                   </div>
                 </article>;
               })}
@@ -199,7 +234,7 @@ export default function ClassSchedulePanel({ subjects, onAddSubject, openClassFo
         </div>
       </div>}
 
-    <p className="db-help db-v5-under"><CalendarRange size={16}/> Add Class lets you choose each meeting's start and end times. Classes repeat weekly here and do not appear in the main Calendar.</p>
+    <p className="db-help db-v5-under"><CalendarRange size={16}/> Each solid-colored block represents a weekly class. Times and sizes follow the actual start and end times; this schedule is separate from the Tasks Calendar.</p>
 
     {draft && <div className="db-overlay"><div role="dialog" aria-modal="true" aria-labelledby="db-v5-class-title" className="db-dialog">
       <div className="db-dialog-head"><div><h2 id="db-v5-class-title">{draft.id ? "Edit class" : "Add a class"}</h2><p>Linked to your existing subjects and their colors.</p></div><button disabled={saving} onClick={() => setDraft(null)} aria-label="Close"><X size={20}/></button></div>
