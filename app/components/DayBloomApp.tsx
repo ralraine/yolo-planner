@@ -554,7 +554,47 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
         <div hidden={loading || view !== "pomodoro"}>{!loading && <PomodoroPanel username={user.username} tasks={tasks}/>}</div>
         {!loading && view === "board" && <section className="db-v51-board-layout">
           <div className="db-v51-board-top"><div><h2>Active workflow</h2><p>Only unfinished tasks stay on this board.</p></div><button className="db-btn db-btn-outline" onClick={()=>setView("completed")}><CheckCircle2 size={16}/> Completed ({counts.done})</button></div>
-          <div className="db-kanban db-board-page db-v51-active-board">{ACTIVE_STATUS.map(s=>{const items=sorted(tasks.filter(t=>t.status===s.id));return <div className="db-board-column" key={s.id} onDragOver={e=>e.preventDefault()} onDrop={(e:DragEvent<HTMLDivElement>)=>{e.preventDefault();const id=e.dataTransfer.getData("text/plain")||dragId;const t=tasks.find(t=>t.id===id);setDragId("");if(t)void patchTask(t,{status:s.id});}}><div className="db-between"><h3>{s.title}</h3><span>{items.length}</span></div><p className="db-help">Drag cards here to update status.</p>{items.map(t=><div className="db-v51-task-wrapper" key={t.id}><TaskTile task={t} subject={subjectMap.get(t.subject_id??"")} edit={()=>openTask(t)} dragStart={setDragId}/><button type="button" className="db-v51-markdone" disabled={!!updatingId} onClick={()=>void patchTask(t,{status:"done"})}><CheckCircle2 size={15}/> Mark Done</button></div>)}{items.length===0&&<p className="db-empty">Drop an unfinished task here</p>}</div>;})}</div>
+          <div className="db-kanban db-board-page db-v51-active-board db-v65-board-page">
+            {ACTIVE_STATUS.map(s => {
+              const items = sorted(tasks.filter(t => t.status === s.id));
+              return (
+                <div
+                  className="db-board-column"
+                  key={s.id}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={(e: DragEvent<HTMLDivElement>) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer.getData("text/plain") || dragId;
+                    const t = tasks.find(t => t.id === id);
+                    setDragId("");
+                    if (t) void patchTask(t, { status: s.id });
+                  }}
+                >
+                  <div className="db-between db-v65-board-heading">
+                    <h3>{s.title}</h3>
+                    <span>{items.length}</span>
+                  </div>
+                  <p className="db-help db-v65-board-hint">Drag cards here to update status.</p>
+                  <div
+                    className="db-v65-board-list"
+                    role="region"
+                    aria-label={`${s.title} tasks (${items.length})`}
+                    tabIndex={0}
+                  >
+                    {items.map(t => (
+                      <div className="db-v51-task-wrapper" key={t.id}>
+                        <TaskTile task={t} subject={subjectMap.get(t.subject_id ?? "")} edit={() => openTask(t)} dragStart={setDragId}/>
+                        <button type="button" className="db-v51-markdone" disabled={!!updatingId} onClick={() => void patchTask(t, { status: "done" })}>
+                          <CheckCircle2 size={15}/> Mark Done
+                        </button>
+                      </div>
+                    ))}
+                    {items.length === 0 && <p className="db-empty">Drop an unfinished task here</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           <div className="db-v51-completion-drop" onDragOver={e=>e.preventDefault()} onDrop={(e:DragEvent<HTMLDivElement>)=>{e.preventDefault();const id=e.dataTransfer.getData("text/plain")||dragId;const t=tasks.find(t=>t.id===id);setDragId("");if(t&&t.status!=="done")void patchTask(t,{status:"done"});}}><CheckCircle2 size={21}/><div><strong>Done with a task?</strong><p>Drag it here or click Mark Done. It disappears from the active board but remains in Completed.</p></div><button className="db-text-link" type="button" onClick={()=>setView("completed")}>View completed <ArrowRight size={15}/></button></div>
         </section>}
 

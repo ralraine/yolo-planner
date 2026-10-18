@@ -1059,3 +1059,43 @@ body:has(.daybloom-v3[data-mode="dark"]) .yolo58-race-floating .yolo58-progress-
 @media(max-width:800px){.daybloom-v3 .db-v64-range-title{flex-basis:100%;}.daybloom-v3 .db-v64-range-toolbar{gap:10px;}.daybloom-v3 .db-v64-range-toolbar label{flex-wrap:wrap;}}
 @media(hover:none){.daybloom-v3 .db-v64-class-actions{opacity:1;}}
 @media(prefers-reduced-motion:reduce){.daybloom-v3 .db-v64-class-actions{transition:none;}}
+
+
+/* YOLO V6.5 — bounded task board columns with independent vertical scrolling.
+   Scoped to the Full Task Board. Dashboard widgets are not changed. */
+.daybloom-v3 .db-v51-board-layout > .db-v51-board-top,
+.daybloom-v3 .db-v51-board-layout > .db-v51-completion-drop { max-width:1060px; }
+.daybloom-v3 .db-kanban.db-v51-active-board.db-v65-board-page {
+  width:100%; max-width:1060px;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:start;
+}
+.daybloom-v3 .db-v65-board-page > .db-board-column {
+  min-width:0; min-height:0;
+  height:clamp(410px,66vh,610px);
+  overflow:hidden;
+}
+.daybloom-v3 .db-v65-board-heading { flex:none; }
+.daybloom-v3 .db-v65-board-hint { flex:none; }
+.daybloom-v3 .db-v65-board-list {
+  display:flex; flex-direction:column; flex:1 1 0; min-height:0; min-width:0;
+  gap:11px; overflow-y:auto; overflow-x:hidden;
+  overscroll-behavior-y:contain;
+  scrollbar-width:thin;
+  scrollbar-color:color-mix(in srgb,var(--db-accent) 45%,var(--db-border)) transparent;
+  scrollbar-gutter:stable;
+  padding:2px 4px 7px 2px;
+}
+.daybloom-v3 .db-v65-board-list:focus-visible {
+  outline:2px solid var(--db-accent); outline-offset:-2px; border-radius:9px;
+}
+.daybloom-v3 .db-v65-board-list > .db-v51-task-wrapper { flex:none; min-width:0; }
+.daybloom-v3 .db-v65-board-list .db-task-tile { display:block; width:100%; max-width:100%; }
+@media(max-width:760px) {
+  .daybloom-v3 .db-kanban.db-v51-active-board.db-v65-board-page {
+    grid-template-columns:minmax(0,1fr);
+  }
+  .daybloom-v3 .db-v65-board-page > .db-board-column {
+    height:clamp(330px,55vh,530px);
+  }
+}
