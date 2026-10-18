@@ -7,7 +7,7 @@ import {
   FileDown, FilePlus2, Flag, Flower2, Heart, LayoutDashboard, Link2,
   ListTodo, LoaderCircle, LogOut, Moon, Palette, Paperclip, Pencil,
   Plus, Search, Settings2, Sparkles, Sun, Target, Trash2, UserRound, X,
-  Repeat2, CalendarRange, Timer, BookHeart,
+  Repeat2, CalendarRange, Timer, BookHeart, Rocket,
 } from "lucide-react";
 import ClassSchedulePanel from "./ClassSchedulePanel";
 import TimedCalendar from "./TimedCalendar";
@@ -16,11 +16,12 @@ import JournalPanel from "./JournalPanel";
 import SpotifyPlaylistWidget from "./SpotifyPlaylistWidget";
 import PomodoroQuickControls from "./PomodoroQuickControls";
 import RecurringRulesPanel from "./RecurringRulesPanel";
+import RoadmapPanel from "./RoadmapPanel";
 import { DashboardCustomizeModal, TodayClassesWidget, DEFAULT_DASHBOARD_WIDGETS, normalizeDashboardWidgets, type DashboardWidgetId, type DashboardWidgetSetting } from "./DashboardTools";
 import type { ReactNode } from "react";
 import { GlobalSearch, ReminderCenter, AccountTools } from "./ProductivityTools";
 
-type View = "dashboard" | "tasks" | "completed" | "calendar" | "board" | "classes" | "pomodoro" | "journal" | "settings";
+type View = "dashboard" | "tasks" | "completed" | "calendar" | "board" | "classes" | "pomodoro" | "journal" | "settings" | "roadmap";
 type Status = "todo" | "in_progress" | "done";
 type Priority = "none" | "low" | "medium" | "high";
 type Period = "day" | "week" | "month";
@@ -493,14 +494,14 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
   ];
   const menuTitle:Record<View,string> = {
     dashboard:`${greeting}, ${user.name}!`, tasks:"Your tasks", completed:"Completed tasks", calendar:"Your calendar", board:"Your task board",
-    classes:"Your class schedule", pomodoro:"Focus time", journal:"Your daily journal", settings:"Settings",
+    classes:"Your class schedule", pomodoro:"Focus time", journal:"Your daily journal", settings:"Settings", roadmap:"What’s next?",
   };
   const subtitles:Record<View,string> = {
     dashboard:greetingMessage, tasks:"Your unfinished tasks, all in one place.", completed:"Finished and archived here. Restore a task whenever you need it.",
     calendar:"Every task and its due date, all in sync.", board:"Focus on what remains. Completed tasks move to your archive.",
     classes:"Classes live here, separate from your task calendar.",
     pomodoro:"Find your rhythm with a little focus and a real break.",
-    journal:"Write your day down, just for you.", settings:"Your theme, goals, account recovery and backups in one place.",
+    journal:"Write your day down, just for you.", settings:"Your theme, goals, account recovery and backups in one place.", roadmap:"A sneak peek at the future of YOLO.",
   };
 
   return <div className="daybloom-v3" data-mode={mode} style={cssVars}>
@@ -510,10 +511,10 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
         <div className="db-subject-heading"><span>MY SUBJECTS</span><button onClick={newSubject} title="Add subject" aria-label="Add subject"><Plus size={17}/></button></div>
         <div className="db-subject-list">{!loading && !subjects.length && <p className="db-help">No subjects yet</p>}{subjects.map(s => <div key={s.id} className="db-subject"><i style={{backgroundColor:s.color}}/><button onClick={() => {setFilterSubject(s.id);setView("tasks");}} title={s.name}><strong>{s.name}</strong><small>{s.code}</small></button><button title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`} onClick={()=>{setModalError("");setSubjectDraft({id:s.id,name:s.name,code:s.code??"",color:s.color});}}><Pencil size={14}/></button><button title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`} onClick={()=>void deleteSubject(s)}><Trash2 size={14}/></button></div>)}</div>
         <button className="db-add-subject" type="button" onClick={newSubject}><Plus size={16}/> Add subject</button>
-        <div className="db-sidebar-bottom"><button type="button" className={`db-v55-sidebar-settings ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")}><Settings2 size={18}/> Settings</button><div className="db-reminder"><Heart size={17}/><strong>A little reminder</strong><p>Progress is still progress, even in small steps.</p></div><button className="db-sidebar-logout" onClick={()=>void logout()} disabled={loggingOut}><LogOut size={17}/>{loggingOut?"Logging out...":"Log out"}</button></div>
+        <div className="db-sidebar-bottom"><button type="button" className={`db-v55-sidebar-settings yolo62-sidebar-roadmap ${view === "roadmap" ? "active" : ""}`} onClick={() => setView("roadmap")}><Rocket size={18}/> What's Next?</button><button type="button" className={`db-v55-sidebar-settings ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")}><Settings2 size={18}/> Settings</button><div className="db-reminder"><Heart size={17}/><strong>A little reminder</strong><p>Progress is still progress, even in small steps.</p></div><button className="db-sidebar-logout" onClick={()=>void logout()} disabled={loggingOut}><LogOut size={17}/>{loggingOut?"Logging out...":"Log out"}</button></div>
       </aside>
       <main className="db-main"><header className="db-header"><div className="db-header-copy"><p><Sparkles size={15}/> YOUR PERSONAL WORKSPACE</p><h1>{menuTitle[view]}</h1><span>{subtitles[view]}</span></div><div className="db-header-actions"><GlobalSearch onSelect={result=>{if(result.type==="task"){const t=tasks.find(t=>t.id===result.id);if(t)openTask(t);else setView("tasks");}else if(result.type==="subject"){setFilterSubject(result.id);setView("tasks");}else if(result.type==="class"){setView("classes");}else if(result.type==="journal"){setJournalDate(result.date);setView("journal");}}}/><ReminderCenter tasks={tasks} subjects={subjects} username={user.username} goToTasks={()=>setView("tasks")}/><button className="db-btn db-btn-primary" onClick={()=>newTask()}><Plus size={17}/> New task</button><div className="db-profile"><UserRound size={19}/><div><strong>{user.name}</strong><small>@{user.username}</small></div></div></div></header>
-        <div className="db-mobile-nav">{views.map(v=><button key={v.id} className={view===v.id?"active":""} onClick={()=>setView(v.id)}>{v.name}</button>)}<button onClick={newSubject}>+ Subject</button><button onClick={()=>setView("settings")}>Settings</button><button onClick={()=>void logout()}>Logout</button></div>
+        <div className="db-mobile-nav">{views.map(v=><button key={v.id} className={view===v.id?"active":""} onClick={()=>setView(v.id)}>{v.name}</button>)}<button onClick={newSubject}>+ Subject</button><button className={view==="roadmap"?"active":""} onClick={()=>setView("roadmap")}>What's Next?</button><button onClick={()=>setView("settings")}>Settings</button><button onClick={()=>void logout()}>Logout</button></div>
         {notice && <div className="db-error db-global-error" role="alert">{notice}<button aria-label="Dismiss" onClick={()=>setNotice("")}><X size={15}/></button></div>}
         {loading && <div className="db-panel db-loading"><LoaderCircle size={19} className="animate-spin"/> Loading your workspace...</div>}
 
@@ -533,6 +534,7 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
           </div>}
         </div>}
 
+        {!loading && view === "roadmap" && <RoadmapPanel/>}
         {!loading && view === "settings" && <div className="db-v55-settings-page">
           <PreferencesPanel mode={mode} setMode={setMode} theme={theme} setTheme={setTheme} customColor={customColor} setCustomColor={setCustomColor} dailyTarget={dailyTarget} setDailyTarget={setDailyTarget}/>
           <AccountTools embedded/>
