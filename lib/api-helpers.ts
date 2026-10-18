@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export function devOnly() {
-  if (process.env.NODE_ENV !== "development") {
-    return NextResponse.json({ error: "DayBloom PIN demo is not available in production." }, { status: 404 });
+  // Default-deny production until the password migration and Vercel protection
+  // have been configured explicitly. Shared by every YOLO API endpoint.
+  if (process.env.NODE_ENV !== "development" && process.env.YOLO_PRODUCTION_ENABLED !== "enabled") {
+    return NextResponse.json({ error: "YOLO production API is not enabled yet." }, { status: 503 });
   }
   return null;
 }

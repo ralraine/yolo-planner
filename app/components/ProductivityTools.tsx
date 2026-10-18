@@ -52,27 +52,54 @@ export function ReminderCenter({tasks,subjects,goToTasks,username}:{tasks:AlertT
   <div className="db53-alert-controls"><button onClick={()=>void (notifications?disable():enable())}>{notifications?"Turn browser alerts off":"Enable browser alerts"}</button><small>{notice||"Alerts work only while YOLO is open. Permissions required."}</small></div></div>}</div>;
 }
 
-export function AccountTools({ embedded = false }: { embedded?: boolean }){
-  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[code,setCode]=useState(""),[error,setError]=useState("");
-  async function createCode(){
-    if(!window.confirm("Generate a new recovery code? This replaces any previous code. Save the new code offline."))return;
-    setBusy(true);setError("");setCode("");
-    try{const r=await fetch("/api/account/recovery-code",{method:"POST"});const d=await r.json();if(!r.ok)throw new Error(d.error||"Failed to create code.");setCode(d.code);}
-    catch(e){setError(e instanceof Error?e.message:"Could not generate code.");}finally{setBusy(false);}
+export function AccountTools({ embedded = false }: { embedded?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  async function createCode() {
+    if (!window.confirm("Generate a new recovery code? This replaces your previous code. Save it offline.")) return;
+    setBusy(true); setError(""); setCode("");
+    try {
+      const r = await fetch("/api/account/recovery-code", { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Failed to create code.");
+      setCode(data.code);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not generate recovery code."); }
+    finally { setBusy(false); }
   }
-  async function exportData(){
-    setBusy(true);setError("");
-    try{const r=await fetch("/api/account/export",{cache:"no-store"});if(!r.ok){const d=await r.json();throw new Error(d.error||"Backup failed");}const b=await r.blob();const url=URL.createObjectURL(b);const a=document.createElement("a");a.href=url;a.download=`YOLO-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000);}
-    catch(e){setError(e instanceof Error?e.message:"Backup failed");}finally{setBusy(false);}
+  async function exportData() {
+    setBusy(true); setError("");
+    try {
+      const r = await fetch("/api/account/export", { cache: "no-store" });
+      if (!r.ok) { const data = await r.json(); throw new Error(data.error || "Backup failed."); }
+      const blob = await r.blob(); const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url;
+      a.download = `YOLO-backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not export account data."); }
+    finally { setBusy(false); }
   }
   const content = <>
-    <div className="db53-tool"><h3><Archive size={18}/> Export account data</h3><p>Download tasks, subjects, schedules, journal, and focus history as JSON. Attachment metadata is included, but file contents are not. There is no import/restore feature yet.</p><button type="button" className="db-btn db-btn-primary" disabled={busy} onClick={()=>void exportData()}><Download size={16}/> Export JSON backup</button></div>
-    <div className="db53-tool"><h3><KeyRound size={18}/> Emergency recovery code</h3><p>Generate a one-time code for PIN recovery. Save it offline. Every new code replaces your previous code—never share it with anyone.</p><button type="button" className="db-btn db-btn-outline" disabled={busy} onClick={()=>void createCode()}>{busy?<LoaderCircle size={15} className="animate-spin"/>:<KeyRound size={15}/>} Generate recovery code</button>{code&&<div className="db53-code"><strong>Save this once:</strong><code>{code}</code><button type="button" onClick={()=>void navigator.clipboard?.writeText(code)}>Copy recovery code</button></div>}</div>
-    {error&&<p role="alert" className="db-error">{error}</p>}
-    <p className="db-help">Security note: PIN-only authentication is for local development. Do not deploy YOLO publicly without stronger authentication and protections.</p>
+    <div className="db53-tool"><h3><KeyRound size={18}/> Username + 4-digit PIN</h3>
+      <p>Your original PIN login is back. PINs are short, so don't use a PIN you use anywhere else. Too many incorrect attempts temporarily lock access.</p>
+    </div>
+    <div className="db53-tool"><h3><Archive size={18}/> Export account data</h3>
+      <p>Download tasks, subjects, schedules, journal, and focus history as JSON. Attachment metadata is included, but file contents are not. There is no import/restore feature yet.</p>
+      <button type="button" className="db-btn db-btn-primary" disabled={busy} onClick={() => void exportData()}><Download size={16}/> Export JSON backup</button>
+    </div>
+    <div className="db53-tool"><h3><KeyRound size={18}/> Emergency recovery code</h3>
+      <p>Generate a one-time code to reset your PIN if you forget it. Save it offline. Creating another code invalidates your previous one.</p>
+      <button type="button" className="db-btn db-btn-outline" disabled={busy} onClick={() => void createCode()}>
+        {busy ? <LoaderCircle size={15} className="animate-spin"/> : <KeyRound size={15}/>} Generate recovery code
+      </button>
+      {code && <div className="db53-code"><strong>Save this once:</strong><code>{code}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(code)}>Copy recovery code</button></div>}
+    </div>
+    {error && <p role="alert" className="db-error">{error}</p>}
+    <p className="db-help">Public sign-up allows anyone who knows the URL to register. Keep deployment protection enabled until testing is complete, and do not store sensitive data while using a four-digit PIN.</p>
   </>;
-  if (embedded) return <section className="db-panel db-v55-settings-card"><div className="db-v55-settings-heading"><div><span className="db-overline">ACCOUNT & DATA</span><h2><ShieldCheck size={21}/> Account safety & backup</h2><p>Recovery options and your account export, all in one place.</p></div></div>{content}</section>;
-  return <><button type="button" className="db-icon-button" aria-label="Account backup and recovery" title="Account backup and recovery" onClick={()=>setOpen(true)}><ShieldCheck size={20}/></button>
-    {open&&<div className="db-overlay db53-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false);}}><section className="db53-dialog" role="dialog" aria-modal="true" aria-label="Account safety"><div className="db53-modal-title"><div><h2>Account safety & backup</h2></div><button aria-label="Close" onClick={()=>{setOpen(false);setCode("");}}><X size={20}/></button></div>{content}</section></div>}
+  if (embedded) return <section className="db-panel db-v55-settings-card"><div className="db-v55-settings-heading"><div><span className="db-overline">ACCOUNT &amp; DATA</span><h2><ShieldCheck size={21}/> Account safety &amp; backup</h2><p>Recovery options and your account export, all in one place.</p></div></div>{content}</section>;
+  return <><button type="button" className="db-icon-button" aria-label="Account backup and recovery" title="Account backup and recovery" onClick={() => setOpen(true)}><ShieldCheck size={20}/></button>
+    {open && <div className="db-overlay db53-overlay" onMouseDown={e => {if(e.target===e.currentTarget)setOpen(false);}}><section className="db53-dialog" role="dialog" aria-modal="true" aria-label="Account safety"><div className="db53-modal-title"><div><h2>Account safety &amp; backup</h2></div><button aria-label="Close" onClick={() => {setOpen(false);setCode("");}}><X size={20}/></button></div>{content}</section></div>}
   </>;
 }

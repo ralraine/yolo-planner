@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { hashPin } from "@/lib/auth/pin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { allowAuthRequest } from "@/lib/auth/throttle";
 import { devOnly, rejectWrongOrigin, jsonRequired, parseJsonObject, fail } from "@/lib/api-helpers";
 
 export async function POST(req:NextRequest){
@@ -13,6 +14,7 @@ export async function POST(req:NextRequest){
   const confirm=typeof body.confirmPin==="string"?body.confirmPin:"";
   if(!/^[a-z0-9_]{3,20}$/.test(username)||!/^[0-9A-F]{40}$/.test(code)||!/^[0-9]{4}$/.test(pin)||pin!==confirm) return fail("Invalid recovery details.");
   try{
+    if (!await allowAuthRequest(req, "recover")) return fail("Too many recovery attempts. Please try later.", 429);
     const pepper=process.env.DAYBLOOM_PIN_PEPPER;if(!pepper||pepper.length<32)return fail("Server secret missing.",500);
     const db=createAdminClient();
     const {data:account,error:aError}=await db.from("accounts").select("id").eq("username",username).maybeSingle();if(aError)throw aError;
