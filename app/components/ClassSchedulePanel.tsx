@@ -62,7 +62,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export default function ClassSchedulePanel({ subjects }: { subjects: Subject[] }) {
+export default function ClassSchedulePanel({ subjects, onAddSubject, openClassForSubjectId, onOpenClassHandled }: {
+  subjects: Subject[];
+  onAddSubject: () => void;
+  openClassForSubjectId: string | null;
+  onOpenClassHandled: () => void;
+}) {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -76,6 +81,22 @@ export default function ClassSchedulePanel({ subjects }: { subjects: Subject[] }
   const height = (endHour - startHour) * PX_PER_HOUR;
   const hours = HOUR_OPTIONS.filter(h => h >= startHour && h <= endHour);
   const outsideCount = meetings.filter(m => minutes(m.start_time) < startHour * 60 || minutes(m.end_time) > endHour * 60).length;
+
+  // Once the first subject has been saved, finish the Add Class flow automatically.
+  useEffect(() => {
+    if (!openClassForSubjectId) return;
+    const subject = subjects.find(s => s.id === openClassForSubjectId);
+    if (!subject) return;
+    setError("");
+    setDraft(blank(subject));
+    onOpenClassHandled();
+  }, [openClassForSubjectId, subjects, onOpenClassHandled]);
+
+  function beginAddClass() {
+    setError("");
+    if (!subjects.length) { onAddSubject(); return; }
+    setDraft(blank(subjects[0]));
+  }
 
   useEffect(() => {
     try {
@@ -128,7 +149,7 @@ export default function ClassSchedulePanel({ subjects }: { subjects: Subject[] }
   return <section className="db-v5-section">
     <div className="db-v5-heading">
       <div><span className="db-overline">YOUR WEEKLY TIMETABLE</span><h2>Class Schedule</h2><p>Subjects keep their colors · Class meetings stay separate from the task calendar</p></div>
-      <button className="db-btn db-btn-primary" onClick={() => { setError(""); setDraft(blank(subjects[0])); }} disabled={!subjects.length}><Plus size={16}/> Add class</button>
+      <button type="button" className="db-btn db-btn-primary" onClick={beginAddClass}><Plus size={16}/> Add class</button>
     </div>
 
     <div className="db-v51-schedule-toolbar">
@@ -138,7 +159,7 @@ export default function ClassSchedulePanel({ subjects }: { subjects: Subject[] }
       <button type="button" onClick={() => updateHours(7, 19)}>Reset 7 AM – 7 PM</button>
     </div>
 
-    {!subjects.length && <p className="db-v5-message">Create a subject first, then add a class for it.</p>}
+    {!subjects.length && <p className="db-v5-message">No subjects yet. Click <strong>Add class</strong> to create your first subject, then continue to the timetable.</p>}
     {error && <p className="db-error" role="alert">{error}</p>}
     {outsideCount > 0 && !loading && <p className="db-v51-outside" role="status">{outsideCount} class meeting(s) extend outside the visible hours. Adjust the From / To controls to show them fully.</p>}
 
@@ -166,7 +187,7 @@ export default function ClassSchedulePanel({ subjects }: { subjects: Subject[] }
                   style={{ top: top + 3, height: Math.max(28, size - 6), left: `calc(${width * lane}% + 3px)`, width: `calc(${width}% - 6px)`, borderLeftColor: s?.color ?? "#b8bdcf" }}>
                   <time>{timeLabel(meeting.start_time)} – {timeLabel(meeting.end_time)}</time>
                   <strong>{s?.name ?? "Deleted subject"}</strong>
-                  <small>{s?.code ?? "Unassigned"} · {meeting.room || "Room TBA"}</small>
+                  <small>{s?.code ? `${s.code} · ` : ""}{meeting.room || "Room TBA"}</small>
                   <div className="db-v51-class-actions">
                     <button type="button" aria-label={`Edit ${s?.name ?? "class"}`} title="Edit class" onClick={() => { setError(""); setDraft({ ...meeting, start_time: meeting.start_time.slice(0, 5), end_time: meeting.end_time.slice(0, 5) }); }}><Pencil size={15}/></button>
                     <button type="button" aria-label={`Delete ${s?.name ?? "class"}`} title="Delete class" onClick={() => void remove(meeting)}><Trash2 size={15}/></button>
@@ -183,7 +204,7 @@ export default function ClassSchedulePanel({ subjects }: { subjects: Subject[] }
     {draft && <div className="db-overlay"><div role="dialog" aria-modal="true" aria-labelledby="db-v5-class-title" className="db-dialog">
       <div className="db-dialog-head"><div><h2 id="db-v5-class-title">{draft.id ? "Edit class" : "Add a class"}</h2><p>Linked to your existing subjects and their colors.</p></div><button disabled={saving} onClick={() => setDraft(null)} aria-label="Close"><X size={20}/></button></div>
       <form className="db-form" onSubmit={e => void save(e)}>
-        <label><span className="db-field-label">Subject</span><select required className="db-input" value={draft.subject_id} onChange={e => setDraft(v => v && ({ ...v, subject_id: e.target.value }))}>{subjects.map(s => <option key={s.id} value={s.id}>{s.name} · {s.code}</option>)}</select></label>
+        <label><span className="db-field-label">Subject</span><select required className="db-input" value={draft.subject_id} onChange={e => setDraft(v => v && ({ ...v, subject_id: e.target.value }))}>{subjects.map(s => <option key={s.id} value={s.id}>{s.name}{s.code ? ` · ${s.code}` : ""}</option>)}</select></label>
         <label><span className="db-field-label">Weekday</span><select className="db-input" value={draft.weekday} onChange={e => setDraft(v => v && ({ ...v, weekday: Number(e.target.value) }))}>{DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select></label>
         <div className="db-grid-two"><label><span className="db-field-label">Class starts</span><input className="db-input" required type="time" value={draft.start_time} onChange={e => setDraft(v => v && ({ ...v, start_time: e.target.value }))}/></label><label><span className="db-field-label">Class ends</span><input className="db-input" required type="time" value={draft.end_time} onChange={e => setDraft(v => v && ({ ...v, end_time: e.target.value }))}/></label></div>
         <label><span className="db-field-label">Room number / location</span><input className="db-input" maxLength={100} placeholder="e.g. Room 402 / Online" value={draft.room} onChange={e => setDraft(v => v && ({ ...v, room: e.target.value }))}/></label>

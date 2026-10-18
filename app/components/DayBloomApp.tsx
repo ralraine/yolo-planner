@@ -147,7 +147,7 @@ function TaskModal({ initial, subjects, busy, error, save, close }: { initial: T
     <div className="db-dialog-head"><div><h2 id="db-task-title">{editing ? "Edit task" : "New task"}</h2><p>Details, links and attachments, all in one place.</p></div><button type="button" disabled={busy} onClick={close} aria-label="Close"><X size={20}/></button></div>
     <form onSubmit={(e: FormEvent) => { e.preventDefault(); save(draft); }} className="db-form">
       <label><span className="db-field-label">Task name</span><input className="db-input" autoFocus required maxLength={180} value={draft.title} placeholder="What needs to get done?" onChange={e => setDraft(v => ({ ...v, title: e.target.value }))}/></label>
-      <label><span className="db-field-label">Subject</span><select className="db-input" value={draft.subject_id ?? ""} onChange={e => setDraft(v => ({ ...v, subject_id: e.target.value || null }))}><option value="">Personal / Unassigned</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name} · {s.code}</option>)}</select></label>
+      <label><span className="db-field-label">Subject</span><select className="db-input" value={draft.subject_id ?? ""} onChange={e => setDraft(v => ({ ...v, subject_id: e.target.value || null }))}><option value="">Personal / Unassigned</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name}{s.code ? ` · ${s.code}` : ""}</option>)}</select></label>
       <div className="db-grid-two"><label><span className="db-field-label">Status</span><select className="db-input" value={draft.status} onChange={e => setDraft(v => ({ ...v, status: e.target.value as Status }))}>{STATUS.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></label><label><span className="db-field-label">Priority</span><select className="db-input" value={draft.priority} onChange={e => setDraft(v => ({ ...v, priority: e.target.value as Priority }))}>{PRIORITIES.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label></div>
       <div className="db-field-label">When does this task happen?</div>
       <div className="db54-schedule-type" role="group" aria-label="Schedule type">
@@ -233,9 +233,9 @@ function TaskDetailsModal({ task, subject, close, edit, removeTask }: {
 
 function SubjectModal({ initial, busy, error, save, close }: { initial: SubjectDraft; busy: boolean; error: string; save: (v: SubjectDraft) => void; close: () => void }) {
   const [draft, setDraft] = useState(initial);
-  return <div className="db-overlay"><div className="db-dialog" role="dialog" aria-modal="true" aria-labelledby="db-subject-title"><div className="db-dialog-head"><div><h2 id="db-subject-title">{initial.id ? "Edit subject" : "Add subject"}</h2><p>Give your subject a name, code and color.</p></div><button onClick={close} disabled={busy} aria-label="Close"><X size={20}/></button></div><form className="db-form" onSubmit={e => { e.preventDefault(); save({ ...draft, name: draft.name.trim(), code: draft.code.toUpperCase().trim() }); }}>
+  return <div className="db-overlay"><div className="db-dialog" role="dialog" aria-modal="true" aria-labelledby="db-subject-title"><div className="db-dialog-head"><div><h2 id="db-subject-title">{initial.id ? "Edit subject" : "Add subject"}</h2><p>Choose a subject name and color. The code is optional.</p></div><button onClick={close} disabled={busy} aria-label="Close"><X size={20}/></button></div><form className="db-form" onSubmit={e => { e.preventDefault(); save({ ...draft, name: draft.name.trim(), code: draft.code.toUpperCase().trim() }); }}>
     <label><span className="db-field-label">Subject name</span><input autoFocus required maxLength={60} className="db-input" placeholder="Data Analytics" value={draft.name} onChange={e => setDraft(v => ({...v, name:e.target.value}))}/></label>
-    <label><span className="db-field-label">Subject code</span><input required minLength={2} maxLength={20} className="db-input" placeholder="CS0073" value={draft.code} onChange={e => setDraft(v => ({...v, code:e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "")}))}/></label>
+    <label><span className="db-field-label">Subject code (optional)</span><input minLength={2} maxLength={20} className="db-input" placeholder="e.g. CS0073" value={draft.code} onChange={e => setDraft(v => ({...v, code:e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "")}))}/></label>
     <div><p className="db-field-label">Subject color</p><div className="db-color-row">{COLORS.map(color => <button key={color} className={`db-color-swatch ${color === draft.color ? "db-selected" : ""}`} style={{backgroundColor:color}} title={color} type="button" onClick={() => setDraft(v => ({...v,color}))}>{color === draft.color && <Check size={16}/>}</button>)}<input aria-label="Custom subject color" title="Custom color" type="color" value={draft.color} onChange={e => setDraft(v => ({...v,color:e.target.value}))}/></div></div>
     {error && <p className="db-error" role="alert">{error}</p>}<div className="db-dialog-actions"><button className="db-btn db-btn-outline" type="button" onClick={close}>Cancel</button><button className="db-btn db-btn-primary" disabled={busy}>{busy ? "Saving..." : "Save subject"}</button></div>
   </form></div></div>;
@@ -261,6 +261,8 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
   const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [subjectDraft, setSubjectDraft] = useState<SubjectDraft | null>(null);
+  const [pendingClassAfterSubject, setPendingClassAfterSubject] = useState(false);
+  const [openClassForSubjectId, setOpenClassForSubjectId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [modalError, setModalError] = useState("");
   const [search, setSearch] = useState("");
@@ -440,11 +442,16 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
   function newTask(date: string | null = null) { setDetailTaskId(null); setModalError(""); setTaskDraft(blankTask(date)); }
   function openTask(t: Task) { setModalError(""); setDetailTaskId(t.id); }
   function editTask(t: Task) { setDetailTaskId(null); setModalError(""); setTaskDraft({id:t.id,title:t.title,notes:t.notes,links:t.links ?? [],priority:t.priority,status:t.status,subject_id:t.subject_id,due_date:t.due_date,due_time:t.due_time?.slice(0,5)??null,schedule_type:t.schedule_type??"deadline",end_date:t.end_date??null,end_time:t.end_time?.slice(0,5)??null}); }
-  function newSubject() { setModalError(""); setSubjectDraft({name:"",code:"",color:COLORS[0]}); }
+  function newSubject() { setPendingClassAfterSubject(false); setModalError(""); setSubjectDraft({name:"",code:"",color:COLORS[0]}); }
+  function addSubjectForClass() { setPendingClassAfterSubject(true); setModalError(""); setSubjectDraft({name:"",code:"",color:COLORS[0]}); }
+  function closeSubjectModal() { setSubjectDraft(null); setPendingClassAfterSubject(false); }
   async function saveSubject(d: SubjectDraft) {
     if (busy) return; setBusy(true); setModalError("");
     try { const r = await api<{subject:Subject}>(d.id ? `/api/subjects/${d.id}` : "/api/subjects",jsonOptions(d.id?"PATCH":"POST",{name:d.name,code:d.code,color:d.color}));
-      setSubjects(old => d.id ? old.map(s=>s.id===r.subject.id?r.subject:s):[...old,r.subject]); setSubjectDraft(null);
+      setSubjects(old => d.id ? old.map(s=>s.id===r.subject.id?r.subject:s):[...old,r.subject]);
+      if (!d.id && pendingClassAfterSubject) setOpenClassForSubjectId(r.subject.id);
+      setPendingClassAfterSubject(false);
+      setSubjectDraft(null);
     } catch (e) { setModalError(e instanceof Error?e.message:"Cannot save subject."); } finally { setBusy(false); }
   }
   async function deleteSubject(s:Subject) {
@@ -509,7 +516,7 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
       <aside className="db-sidebar"><div className="db-logo"><span><Flower2 size={24}/></span><div><strong>YOLO</strong><small>Your personal planner</small></div></div>
         <p className="db-nav-title">WORKSPACE</p><nav className="db-nav">{views.map(v=>{const I=v.icon;return <button key={v.id} type="button" className={view === v.id ? "active" : ""} onClick={() => setView(v.id)}><I size={18}/>{v.name}</button>;})}</nav>
         <div className="db-subject-heading"><span>MY SUBJECTS</span><button onClick={newSubject} title="Add subject" aria-label="Add subject"><Plus size={17}/></button></div>
-        <div className="db-subject-list">{!loading && !subjects.length && <p className="db-help">No subjects yet</p>}{subjects.map(s => <div key={s.id} className="db-subject"><i style={{backgroundColor:s.color}}/><button onClick={() => {setFilterSubject(s.id);setView("tasks");}} title={s.name}><strong>{s.name}</strong><small>{s.code}</small></button><button title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`} onClick={()=>{setModalError("");setSubjectDraft({id:s.id,name:s.name,code:s.code??"",color:s.color});}}><Pencil size={14}/></button><button title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`} onClick={()=>void deleteSubject(s)}><Trash2 size={14}/></button></div>)}</div>
+        <div className="db-subject-list">{!loading && !subjects.length && <p className="db-help">No subjects yet</p>}{subjects.map(s => <div key={s.id} className="db-subject"><i style={{backgroundColor:s.color}}/><button onClick={() => {setFilterSubject(s.id);setView("tasks");}} title={s.name}><strong>{s.name}</strong>{s.code && <small>{s.code}</small>}</button><button title={`Edit ${s.name}`} aria-label={`Edit ${s.name}`} onClick={()=>{setModalError("");setSubjectDraft({id:s.id,name:s.name,code:s.code??"",color:s.color});}}><Pencil size={14}/></button><button title={`Delete ${s.name}`} aria-label={`Delete ${s.name}`} onClick={()=>void deleteSubject(s)}><Trash2 size={14}/></button></div>)}</div>
         <button className="db-add-subject" type="button" onClick={newSubject}><Plus size={16}/> Add subject</button>
         <div className="db-sidebar-bottom"><button type="button" className={`db-v55-sidebar-settings yolo62-sidebar-roadmap ${view === "roadmap" ? "active" : ""}`} onClick={() => setView("roadmap")}><Rocket size={18}/> What's Next?</button><button type="button" className={`db-v55-sidebar-settings ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")}><Settings2 size={18}/> Settings</button><div className="db-reminder"><Heart size={17}/><strong>A little reminder</strong><p>Progress is still progress, even in small steps.</p></div><button className="db-sidebar-logout" onClick={()=>void logout()} disabled={loggingOut}><LogOut size={17}/>{loggingOut?"Logging out...":"Log out"}</button></div>
       </aside>
@@ -542,7 +549,7 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
         {!loading && view === "tasks" && <section className="db-panel db-tasks-panel"><div className="db-filter-bar"><div className="db-search"><Search size={17}/><input aria-label="Search tasks" placeholder="Search tasks and notes..." value={search} onChange={e=>setSearch(e.target.value)}/></div><select className="db-input" aria-label="Filter by subject" value={filterSubject} onChange={e=>setFilterSubject(e.target.value)}><option value="">All subjects</option>{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><select className="db-input" aria-label="Filter by status" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option value="">All active statuses</option>{ACTIVE_STATUS.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}</select></div><div className="db-list-heading"><h2>Active tasks</h2><span>{filtered.length} remaining</span></div>{filtered.length?filtered.map(t=><div key={t.id} className="db-task-row"><button aria-label={`Open ${t.title}`} onClick={()=>openTask(t)}>{t.status==="done"?<CheckCircle2 size={20}/>:<Circle size={20}/>}</button><button className="db-task-row-main" onClick={()=>openTask(t)}><strong className={t.status==="done"?"db-strike":""}>{t.title}</strong><small><SubjectChip subject={subjectMap.get(t.subject_id??"")}/> · {humanDate(t.due_date)}</small></button><PriorityChip priority={t.priority}/><select aria-label={`Change status for ${t.title}`} value={t.status} disabled={!!updatingId} onChange={e=>void patchTask(t,{status:e.target.value as Status})}>{STATUS.map(s=><option value={s.id} key={s.id}>{s.title}</option>)}</select><button title="Edit task" onClick={()=>editTask(t)}><Pencil size={17}/></button><button title="Delete task" onClick={()=>void deleteTask(t)}><Trash2 size={17}/></button></div>):<p className="db-empty db-empty-large">No tasks match your filters.</p>}</section>}
 
         {!loading && view === "tasks" && <RecurringRulesPanel refreshKey={recurrenceRefreshKey}/>}
-        {!loading && view === "classes" && <ClassSchedulePanel subjects={subjects}/>}
+        {!loading && view === "classes" && <ClassSchedulePanel subjects={subjects} onAddSubject={addSubjectForClass} openClassForSubjectId={openClassForSubjectId} onOpenClassHandled={() => setOpenClassForSubjectId(null)}/>}
         {!loading && view === "journal" && <JournalPanel key={journalDate ?? "recent"} username={user.username} initialDate={journalDate}/>}
         <div hidden={loading || view !== "pomodoro"}>{!loading && <PomodoroPanel username={user.username} tasks={tasks}/>}</div>
         {!loading && view === "board" && <section className="db-v51-board-layout">
@@ -562,7 +569,7 @@ export default function DayBloomApp({ user }: { user: { name: string; username: 
     </div>
     {!loading && view !== "dashboard" && view !== "pomodoro" && <PomodoroQuickControls floating openFull={() => setView("pomodoro")}/>}
     {showDashboardCustomize && <DashboardCustomizeModal widgets={dashboardWidgets} setWidgets={setDashboardWidgets} onClose={() => setShowDashboardCustomize(false)}/>}
-    {subjectDraft && <SubjectModal initial={subjectDraft} busy={busy} error={modalError} save={saveSubject} close={()=>setSubjectDraft(null)}/>}
+    {subjectDraft && <SubjectModal initial={subjectDraft} busy={busy} error={modalError} save={saveSubject} close={closeSubjectModal}/>}
     {detailTask && !taskDraft && <TaskDetailsModal task={detailTask} subject={subjectMap.get(detailTask.subject_id ?? "")} close={() => setDetailTaskId(null)} edit={() => editTask(detailTask)} removeTask={() => void deleteTask(detailTask)} />}
     {taskDraft && <TaskModal initial={taskDraft} subjects={subjects} busy={busy} error={modalError} save={saveTask} close={()=>setTaskDraft(null)}/>}
   </div>;
